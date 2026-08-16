@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+data/chinese-poetry/
+data/embeddings.npy
+data/embeddings_keys.json
+outputs/data.js
+outputs/*.png
+!outputs/k_sweep.png
+outputs/pca.html
+outputs/tsne.html
+outputs/clusters.json
+.DS_Store
