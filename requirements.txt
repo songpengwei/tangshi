@@ -1,7 +1,2 @@
-# make run 只需标准库；以下为零重建流水线（make data/embed/cluster/db）所需
-pandas
-opencc-python-reimplemented
-scikit-learn
-matplotlib
-torch
-sentence-transformers
+# 网站运行（make run）仅需 Python 3.9+ 标准库，无需安装任何依赖。
+# 从零重建流水线所需的依赖见 requirements-pipeline.txt（make build-pipeline）。

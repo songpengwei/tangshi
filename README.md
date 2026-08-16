@@ -6,12 +6,11 @@
 ## 快速开始
 
 ```sh
-make build   # 创建 .venv 并安装依赖
 make run     # 启动服务，访问 http://127.0.0.1:8899/
 ```
 
-仓库自带 `data/poems.db`（SQLite，含全部诗作元信息、两层聚类标签、
-t-SNE 坐标），`make run` 无需任何额外数据即可直接跑。
+仅需 Python 3.9+，零第三方依赖。仓库自带 `data/poems.db`（SQLite，
+含全部诗作元信息、两层聚类标签、t-SNE 坐标），clone 后即可直接跑。
 
 ## 交互
 
@@ -22,7 +21,10 @@ t-SNE 坐标），`make run` 无需任何额外数据即可直接跑。
 
 ## 从零重建流水线
 
+需要先安装流水线依赖（torch/sklearn 等，体积较大）：
+
 ```sh
+make build-pipeline   # 创建 .venv 并安装 requirements-pipeline.txt
 make data      # 克隆 chinese-poetry 数据源并构建 data/poems.jsonl
 make embed     # 抽取 embedding（Qwen3-Embedding-0.6B，支持断点续跑）
 make cluster   # PCA→t-SNE + 两层聚类 k=100→20

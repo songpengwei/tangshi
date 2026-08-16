@@ -1,0 +1,8 @@
+# 从零重建流水线（make data/embed/cluster/db）所需依赖
+# 注意: torch 在 Linux 上默认拉 CUDA 版，体积很大；Mac 上为 MPS 版
+pandas
+opencc-python-reimplemented
+scikit-learn
+matplotlib
+torch
+sentence-transformers
