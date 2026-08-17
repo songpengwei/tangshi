@@ -421,7 +421,8 @@ fetch("/api/points").then(r => r.json()).then(data => {
   }
 
   const legend = document.getElementById("legend");
-  for (const m of data.macros) {
+  const sorted = [...data.macros].sort((a, b) => b.count - a.count);
+  for (const m of sorted) {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.innerHTML = `<span class="dot" style="background:${MACRO_COLORS[m.id]}"></span>${m.name}<span class="n">${m.count}</span>`;
@@ -431,7 +432,7 @@ fetch("/api/points").then(r => r.json()).then(data => {
       lock(members[Math.floor(Math.random() * members.length)]);
     };
     legend.appendChild(chip);
-    chips.push(chip);
+    chips[m.id] = chip;  // chips 按下标=主题 id 访问，与显示顺序无关
   }
   resize();
 });
