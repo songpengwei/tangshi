@@ -6,6 +6,7 @@ data/embeddings_keys.json
 outputs/data.js
 outputs/*.png
 !outputs/k_sweep.png
+!outputs/icon_*.png
 outputs/pca.html
 outputs/tsne.html
 outputs/clusters.json
