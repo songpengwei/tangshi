@@ -57,6 +57,8 @@ def build_data_js():
         "bios": bios,
         "fineNames": fine_names,
         "points": points,
+        "routes": json.load(open(
+            os.path.join(BASE_DIR, "outputs", "routes.json"), encoding="utf-8")),
     }
     return ("window.TANGSHI_DATA = "
             + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
@@ -99,6 +101,9 @@ function fetchDetail(id) {
   return Promise.resolve(d);
 }""")
     # 2) 初始化：fetch /api/points -> 直接读内置数据
+    js = replace_once(js,
+        'fetch("/api/routes").then(r => r.json()).then(rs => { ROUTES = rs; buildRouteMenu(); });',
+        "ROUTES = window.TANGSHI_DATA.routes; buildRouteMenu();")
     js = replace_once(js,
         'fetch("/api/points").then(r => r.json()).then(data => {',
         "(function init(data) {")

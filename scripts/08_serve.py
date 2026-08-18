@@ -8,6 +8,7 @@
     GET /api/points    -> 全部点位（轻量字段），页面初始化用
     GET /api/poem?id=N -> 单首诗完整信息（正文/小传/标签等）
     GET /api/random?m=N -> 主题 N 内随机一首诗 id
+    GET /api/routes    -> 漫游路线（outputs/routes.json）
 """
 import json
 import os
@@ -96,6 +97,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/random":
                 hit = random_poem(int(qs["m"][0]))
                 self._json(hit) if hit else self._json({"error": "not found"}, 404)
+            elif url.path == "/api/routes":
+                self._json(ROUTES)
             else:
                 self._json({"error": "not found"}, 404)
         except (KeyError, ValueError, IndexError):
@@ -107,5 +110,7 @@ class Handler(BaseHTTPRequestHandler):
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8899
 POINTS = get_points()  # 启动时加载一次，之后只读
-print(f"点位 {len(POINTS['points'])} 首, 主题 {len(POINTS['macros'])} 个")
+with open(os.path.join(BASE_DIR, "outputs", "routes.json"), encoding="utf-8") as _f:
+    ROUTES = json.load(_f)
+print(f"点位 {len(POINTS['points'])} 首, 主题 {len(POINTS['macros'])} 个, 路线 {len(ROUTES)} 条")
 ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
