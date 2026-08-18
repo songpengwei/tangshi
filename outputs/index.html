@@ -97,6 +97,27 @@
   #panel .nearby .nb .bt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #panel .nearby .nb .ba { color: var(--blue); flex-shrink: 0; }
 
+  /* 分享诗卡 */
+  #panel .shareBtn {
+    display: inline-block; margin-top: 12px; font-size: 12px; cursor: pointer;
+    padding: 4px 14px; border-radius: 999px; background: var(--dark); color: var(--light);
+  }
+  #panel .shareBtn:active { opacity: .8; }
+  #shareModal {
+    position: fixed; inset: 0; z-index: 50; background: rgba(105, 103, 115, .55);
+    display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+  }
+  #shareModal img {
+    max-width: min(86vw, 450px); max-height: 76vh; border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .25); background: #fff;
+  }
+  #shareModal .ops { display: flex; gap: 12px; }
+  #shareModal .ops a, #shareModal .ops span {
+    font-size: 13px; padding: 6px 18px; border-radius: 999px; cursor: pointer;
+    background: #fff; color: var(--dark); text-decoration: none;
+  }
+  #shareModal .hint { font-size: 11px; color: rgba(255,255,255,.85); }
+
   /* 左下角缩略星图 */
   #minimap {
     position: absolute; left: 16px; bottom: 16px; z-index: 5;
@@ -150,6 +171,7 @@
   <div id="panel"><div class="placeholder">移动鼠标查看诗作<br>点击点位锁定，或点击上方主题高亮一类<br>再次点击取消</div></div>
   <div id="minimap" hidden><div class="mmTitle">附近的诗 · 最近 10 首</div><canvas id="mmcv"></canvas></div>
 </main>
+<div id="shareModal" hidden></div>
 <script>
 // 木鸟配色派生的 20 主题色
 const MACRO_COLORS = [
@@ -351,10 +373,13 @@ function renderDetail(d, locked) {
     <div class="content">${poemRows(d.paragraphs)}</div>
     ${bioHtml(d.bio)}
     ${locked && currentNearby ? nearbyHtml(currentNearby) : ""}
+    ${locked ? '<div><span class="shareBtn" id="shareBtn">生成分享诗卡</span></div>' : ''}
     ${locked ? '<div class="locked">已锁定：同主题高亮中，再次点击取消</div>' : ''}
   `;
   bindFineChips();
   bindNearby();
+  const shareBtn = document.getElementById("shareBtn");
+  if (shareBtn) shareBtn.onclick = () => openShare(d);
   const toggle = document.getElementById("bioToggle");
   if (toggle) {
     let expanded = false;
@@ -479,6 +504,154 @@ mmcv.addEventListener("click", e => {
   }
   if (best >= 0) lock(best);
 });
+
+// ---- 分享诗卡（Canvas 离屏绘制，900x1200 适配小红书/朋友圈） ----
+const shareModal = document.getElementById("shareModal");
+let DATA_BOUNDS = null;  // 全体点位坐标范围（诗卡小地图用）
+
+function fitText(g, text, maxW) {
+  if (g.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && g.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+  return t + "…";
+}
+
+function makeShareCard(d, url) {
+  const W = 900, H = 1200;
+  const card = document.createElement("canvas");
+  card.width = W; card.height = H;
+  const g = card.getContext("2d");
+  const accent = MACRO_COLORS[d.macro];
+
+  g.fillStyle = "#EFF1F3"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#fff";
+  if (g.roundRect) { g.beginPath(); g.roundRect(36, 36, W - 72, H - 72, 24); g.fill(); }
+  else g.fillRect(36, 36, W - 72, H - 72);
+
+  g.textAlign = "center";
+  // 头部：主题 · 细类
+  const headText = `${d.macro_name} · ${d.fine_name}`;
+  g.font = "22px 'PingFang SC', sans-serif";
+  const hw = g.measureText(headText).width;
+  g.fillStyle = accent;
+  g.beginPath(); g.arc(W / 2 - hw / 2 - 18, 96, 8, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#9a98a3";
+  g.fillText(headText, W / 2 + 10, 104);
+
+  // 诗名 / 作者
+  g.fillStyle = "#696773";
+  g.font = "bold 42px 'PingFang SC', serif";
+  g.fillText(fitText(g, `《${d.title}》`, W - 160), W / 2, 180);
+  g.font = "26px 'PingFang SC', sans-serif";
+  g.fillStyle = "#77AAC2";
+  g.fillText(`${d.author}${d.era ? " · " + d.era : ""}`, W / 2, 228);
+
+  // 正文一联（前两句）
+  const clauses = d.paragraphs.join("").split(/(?<=[，。！？；])/).filter(s => s.trim()).slice(0, 2);
+  g.font = "32px 'PingFang SC', serif";
+  g.fillStyle = "#57526B";
+  clauses.forEach((c, i) => g.fillText(c, W / 2, 300 + i * 52));
+
+  // 语义地图缩略：全体压暗 + 邻近 10 首 + 当前高亮
+  const bx = 110, by = 410, bw = 680, bh = 400;
+  g.fillStyle = "#F7F8F9";
+  if (g.roundRect) { g.beginPath(); g.roundRect(bx, by, bw, bh, 16); g.fill(); }
+  else g.fillRect(bx, by, bw, bh);
+  if (!DATA_BOUNDS) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of POEMS) {
+      if (p.tx < x0) x0 = p.tx; if (p.tx > x1) x1 = p.tx;
+      if (p.ty < y0) y0 = p.ty; if (p.ty > y1) y1 = p.ty;
+    }
+    DATA_BOUNDS = { x0, x1, y0, y1 };
+  }
+  const B = DATA_BOUNDS, pad = 16;
+  const k = Math.min((bw - 2 * pad) / (B.x1 - B.x0), (bh - 2 * pad) / (B.y1 - B.y0));
+  const ox = bx + pad - B.x0 * k + ((bw - 2 * pad) - (B.x1 - B.x0) * k) / 2;
+  const oy = by + pad + B.y1 * k + ((bh - 2 * pad) - (B.y1 - B.y0) * k) / 2;
+  const pt = p => [ox + p.tx * k, oy - p.ty * k];
+  g.fillStyle = "rgba(105,103,115,.16)";
+  for (const p of POEMS) {
+    const [x, y] = pt(p);
+    g.fillRect(x, y, 1.6, 1.6);
+  }
+  const center = POEMS[ID2IDX[d.id]];
+  const [ccx, ccy] = pt(center);
+  if (currentNearby) {
+    for (const j of currentNearby.nearest10) {
+      const [x, y] = pt(POEMS[j]);
+      g.strokeStyle = fineColor(POEMS[j]);
+      g.globalAlpha = 0.55; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(ccx, ccy); g.lineTo(x, y); g.stroke();
+      g.globalAlpha = 1;
+      g.fillStyle = fineColor(POEMS[j]);
+      g.beginPath(); g.arc(x, y, 4.5, 0, Math.PI * 2); g.fill();
+    }
+  }
+  g.fillStyle = accent;
+  g.beginPath(); g.arc(ccx, ccy, 9, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 4; g.strokeStyle = "#fff";
+  g.beginPath(); g.arc(ccx, ccy, 9, 0, Math.PI * 2); g.stroke();
+  g.font = "18px 'PingFang SC', sans-serif";
+  g.fillStyle = "#9a98a3";
+  g.fillText("在语义地图中的位置", W / 2, by + bh - 12);
+
+  // 相似的诗
+  g.textAlign = "left";
+  g.font = "bold 24px 'PingFang SC', sans-serif";
+  g.fillStyle = "#696773";
+  g.fillText("相似的诗", 110, 868);
+  g.font = "23px 'PingFang SC', sans-serif";
+  let sy = 908;
+  for (const j of (currentNearby ? currentNearby.nearest5 : [])) {
+    g.fillStyle = fineColor(POEMS[j]);
+    g.beginPath(); g.arc(122, sy - 7, 5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#57526B";
+    g.fillText(fitText(g, `《${POEMS[j].t}》 ${POEMS[j].a}`, W - 240), 140, sy);
+    sy += 37;
+  }
+
+  // 页脚：来源 + 链接
+  g.textAlign = "center";
+  g.strokeStyle = "#e2e4e7"; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(110, 1092); g.lineTo(W - 110, 1092); g.stroke();
+  g.font = "bold 22px 'PingFang SC', sans-serif";
+  g.fillStyle = "#696773";
+  g.fillText("来自 · 全唐诗名家诗作语义图谱", W / 2, 1124);
+  g.font = "17px 'PingFang SC', sans-serif";
+  g.fillStyle = "#9a98a3";
+  g.fillText(fitText(g, url, W - 200), W / 2, 1152);
+  return card;
+}
+
+function openShare(d) {
+  const url = location.origin + location.pathname + "#" + d.id;
+  const inContainer = !!(window.xhs && window.xhs.miniTool);
+  const img = document.createElement("img");
+  img.src = makeShareCard(d, url).toDataURL("image/png");
+  shareModal.innerHTML = "";
+  shareModal.appendChild(img);
+  const ops = document.createElement("div");
+  ops.className = "ops";
+  if (!inContainer) {
+    const a = document.createElement("a");
+    a.textContent = "保存图片";
+    a.download = `诗卡-${d.title}.png`;
+    a.href = img.src;
+    ops.appendChild(a);
+  }
+  const close = document.createElement("span");
+  close.textContent = "关闭";
+  close.onclick = () => { shareModal.hidden = true; };
+  ops.appendChild(close);
+  shareModal.appendChild(ops);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = inContainer ? "可截图保存诗卡" : "也可右键 / 长按图片保存";
+  shareModal.appendChild(hint);
+  shareModal.hidden = false;
+}
+shareModal.addEventListener("click", e => { if (e.target === shareModal) shareModal.hidden = true; });
 
 // 面板刷新：只有仍然是当前展示对象时才更新
 function showPoem(i, locked) {
