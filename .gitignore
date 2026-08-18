@@ -10,3 +10,5 @@ outputs/pca.html
 outputs/tsne.html
 outputs/clusters.json
 .DS_Store
+minitool/
+tangshi-minitool.zip
