@@ -35,9 +35,9 @@
   #legend .chip.active { border-color: var(--dark); font-weight: 600; }
   #legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
   #legend .chip .n { color: #9a98a3; font-size: 10px; }
-  main { flex: 1; display: flex; min-height: 0; }
+  main { flex: 1; display: flex; min-height: 0; position: relative; }
   #canvasWrap { flex: 1; position: relative; min-width: 0; }
-  canvas { position: absolute; inset: 0; cursor: crosshair; }
+  #cv { position: absolute; inset: 0; cursor: crosshair; }
   #panel {
     width: 360px; flex-shrink: 0; background: #fff; border-left: 1px solid #e2e4e7;
     padding: 20px; overflow-y: auto;
@@ -85,6 +85,27 @@
   }
   #panel .loading { font-size: 12px; color: #9a98a3; margin-top: 16px; }
 
+  /* 附近的诗 */
+  #panel .nearby { border-top: 1px dashed #e2e4e7; margin-top: 14px; padding-top: 12px; }
+  #panel .nearby > b { font-size: 13px; display: block; margin-bottom: 8px; }
+  #panel .nearby .grp { font-size: 11px; color: #9a98a3; margin: 8px 0 3px; }
+  #panel .nearby .nb {
+    font-size: 12px; line-height: 1.9; cursor: pointer; border-radius: 6px;
+    padding: 1px 6px; display: flex; justify-content: space-between; gap: 8px;
+  }
+  #panel .nearby .nb:hover { background: var(--light); }
+  #panel .nearby .nb .bt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #panel .nearby .nb .ba { color: var(--blue); flex-shrink: 0; }
+
+  /* 左下角缩略星图 */
+  #minimap {
+    position: absolute; left: 16px; bottom: 16px; z-index: 5;
+    background: #fff; border: 1px solid #e2e4e7; border-radius: 10px;
+    padding: 8px 10px 6px; box-shadow: 0 2px 10px rgba(105, 103, 115, .12);
+  }
+  #minimap .mmTitle { font-size: 11px; color: #9a98a3; margin-bottom: 4px; text-align: center; }
+  #minimap canvas { display: block; cursor: pointer; }
+
   @media (max-width: 700px) {
     body { min-height: 100dvh; height: auto; overflow: auto; }
     header { padding: 9px 12px; gap: 8px; }
@@ -112,6 +133,9 @@
       padding: 14px;
       overflow: visible;
     }
+    /* 手机端星图挪到面板下方 */
+    #minimap { position: static; margin: 12px 14px 20px; }
+    #minimap canvas { margin: 0 auto; }
   }
 </style>
 </head>
@@ -124,6 +148,7 @@
 <main>
   <div id="canvasWrap"><canvas id="cv"></canvas></div>
   <div id="panel"><div class="placeholder">移动鼠标查看诗作<br>点击点位锁定，或点击上方主题高亮一类<br>再次点击取消</div></div>
+  <div id="minimap" hidden><div class="mmTitle">附近的诗 · 最近 10 首</div><canvas id="mmcv"></canvas></div>
 </main>
 <script>
 // 木鸟配色派生的 20 主题色
@@ -325,9 +350,11 @@ function renderDetail(d, locked) {
     <div class="facts">${[d.form, `${d.fine_name}（细类 ${d.fine}）`, ...d.tags.map(t => `<span class="tag">${t}</span>`)].filter(Boolean).join(" ")}</div>
     <div class="content">${poemRows(d.paragraphs)}</div>
     ${bioHtml(d.bio)}
+    ${locked && currentNearby ? nearbyHtml(currentNearby) : ""}
     ${locked ? '<div class="locked">已锁定：同主题高亮中，再次点击取消</div>' : ''}
   `;
   bindFineChips();
+  bindNearby();
   const toggle = document.getElementById("bioToggle");
   if (toggle) {
     let expanded = false;
@@ -338,6 +365,120 @@ function renderDetail(d, locked) {
     };
   }
 }
+
+// ---- 附近的诗（基于 t-SNE 坐标距离，纯前端计算） ----
+let currentNearby = null;
+
+function computeNearby(i) {
+  const c = POEMS[i];
+  const dists = [];
+  for (let j = 0; j < POEMS.length; j++) {
+    if (j === i) continue;
+    const dx = POEMS[j].tx - c.tx, dy = POEMS[j].ty - c.ty;
+    dists.push([dx * dx + dy * dy, j]);
+  }
+  dists.sort((a, b) => a[0] - b[0]);
+  const nearest10 = dists.slice(0, 10).map(([, j]) => j);
+  const samePoet = dists.filter(([, j]) => POEMS[j].a === c.a).slice(0, 3).map(([, j]) => j);
+  const finePool = (FINE_MEMBERS[c.f] || []).filter(j => j !== i);
+  const macroPool = (MACRO_MEMBERS[c.m] || []).filter(j => j !== i);
+  return {
+    center: i,
+    nearest10,
+    nearest5: nearest10.slice(0, 5),
+    samePoet,
+    sameFine: finePool.length ? finePool[Math.floor(Math.random() * finePool.length)] : -1,
+    sameMacro: macroPool.length ? macroPool[Math.floor(Math.random() * macroPool.length)] : -1,
+  };
+}
+
+function nearbyHtml(nb) {
+  const seen = new Set([nb.center]);
+  const item = j => {
+    if (j < 0 || seen.has(j)) return "";
+    seen.add(j);
+    return `<div class="nb" data-i="${j}"><span class="bt">《${POEMS[j].t}》</span><span class="ba">${POEMS[j].a}</span></div>`;
+  };
+  const group = (label, idxs) => {
+    const items = idxs.map(item).filter(Boolean).join("");
+    return items ? `<div class="grp">${label}</div>${items}` : "";
+  };
+  return `<div class="nearby"><b>附近的诗</b>`
+    + group("语义最接近的 5 首", nb.nearest5)
+    + group("同诗人的相似作品", nb.samePoet)
+    + (nb.sameFine >= 0 ? `<div class="grp">同一细类的另一首</div>${item(nb.sameFine)}` : "")
+    + (nb.sameMacro >= 0 ? `<div class="grp">同主题的另一首</div>${item(nb.sameMacro)}` : "")
+    + `</div>`;
+}
+
+function bindNearby() {
+  panel.querySelectorAll(".nearby .nb").forEach(el => {
+    el.onclick = () => lock(Number(el.dataset.i));
+  });
+}
+
+// ---- 左下角缩略星图 ----
+const MM = 200;              // 星图边长（CSS 像素）
+const mmDiv = document.getElementById("minimap");
+const mmcv = document.getElementById("mmcv");
+const mmCtx = mmcv.getContext("2d");
+let mmPts = [];              // 星图上各点 {x, y, idx}，供点击命中
+
+function drawMinimap() {
+  const nb = currentNearby;
+  if (!nb) { mmDiv.hidden = true; return; }
+  mmDiv.hidden = false;
+  const dpr = window.devicePixelRatio || 1;
+  mmcv.width = MM * dpr; mmcv.height = MM * dpr;
+  mmcv.style.width = MM + "px"; mmcv.style.height = MM + "px";
+  mmCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  mmCtx.clearRect(0, 0, MM, MM);
+
+  const c = POEMS[nb.center];
+  const rel = nb.nearest10.map(j => ({ j, dx: POEMS[j].tx - c.tx, dy: POEMS[j].ty - c.ty }));
+  const maxd = Math.max(...rel.map(p => Math.hypot(p.dx, p.dy)), 1e-9);
+  const k = (MM / 2 - 14) / maxd;   // 最远的点缩放到边缘内
+  const cx = MM / 2, cy = MM / 2;
+  // 边：中心到各点，长度即距离（近短远长）
+  mmPts = [];
+  for (const p of rel) {
+    const x = cx + p.dx * k, y = cy - p.dy * k;
+    mmPts.push({ x, y, idx: p.j });
+    mmCtx.beginPath();
+    mmCtx.moveTo(cx, cy);
+    mmCtx.lineTo(x, y);
+    mmCtx.strokeStyle = fineColor(POEMS[p.j]);
+    mmCtx.globalAlpha = 0.4;
+    mmCtx.lineWidth = 1;
+    mmCtx.stroke();
+  }
+  mmCtx.globalAlpha = 1;
+  for (const p of mmPts) {
+    mmCtx.beginPath();
+    mmCtx.arc(p.x, p.y, 3.4, 0, Math.PI * 2);
+    mmCtx.fillStyle = fineColor(POEMS[p.idx]);
+    mmCtx.fill();
+  }
+  // 中心点放大 + 白描边
+  mmCtx.beginPath();
+  mmCtx.arc(cx, cy, 6, 0, Math.PI * 2);
+  mmCtx.fillStyle = fineColor(c);
+  mmCtx.fill();
+  mmCtx.lineWidth = 2;
+  mmCtx.strokeStyle = "#fff";
+  mmCtx.stroke();
+}
+
+mmcv.addEventListener("click", e => {
+  const rect = mmcv.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let best = -1, bestD = 100;  // 10px 内命中
+  for (const p of mmPts) {
+    const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+    if (d < bestD) { bestD = d; best = p.idx; }
+  }
+  if (best >= 0) lock(best);
+});
 
 // 面板刷新：只有仍然是当前展示对象时才更新
 function showPoem(i, locked) {
@@ -356,12 +497,16 @@ let MACRO_MEMBERS = [];
 function lock(i) {
   lockIdx = i;
   lockedMacro = POEMS[i].m;
+  currentNearby = computeNearby(i);
   chips.forEach((chip, m) => chip.classList.toggle("active", m === lockedMacro));
   showPoem(i, true);
+  drawMinimap();
   draw();
 }
 function unlock() {
   lockIdx = -1; lockedMacro = -1;
+  currentNearby = null;
+  mmDiv.hidden = true;
   chips.forEach(chip => chip.classList.remove("active"));
   if (hoverIdx >= 0) showPoem(hoverIdx, false);
   else panel.innerHTML = '<div class="placeholder">移动鼠标查看诗作<br>点击点位锁定，或点击上方主题高亮一类<br>再次点击取消</div>';
