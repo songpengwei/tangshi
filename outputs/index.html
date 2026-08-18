@@ -494,24 +494,41 @@ function showPoem(i, locked) {
 
 // ---- 锁定/解锁 ----
 let MACRO_MEMBERS = [];
-function lock(i) {
+let ID2IDX = {};   // 诗 id -> 点位下标（URL 路由用）
+
+// URL 路由：锁定时把诗 id 写入 hash，支持后退/刷新直达（容器内 pushState 可能不可用，静默降级）
+function navTo(hash) {
+  try { history.pushState(null, "", hash); } catch (e) { /* 离线容器忽略 */ }
+}
+function syncFromURL() {
+  const m = location.hash.match(/^#(\d+)$/);
+  const idx = m ? ID2IDX[Number(m[1])] : undefined;
+  if (idx !== undefined && idx !== lockIdx) lock(idx, false);
+  else if (idx === undefined && lockIdx >= 0) unlock(false);
+}
+
+function lock(i, push = true) {
   lockIdx = i;
   lockedMacro = POEMS[i].m;
   currentNearby = computeNearby(i);
+  if (push) navTo("#" + POEMS[i].i);
   chips.forEach((chip, m) => chip.classList.toggle("active", m === lockedMacro));
   showPoem(i, true);
   drawMinimap();
   draw();
 }
-function unlock() {
+function unlock(push = true) {
   lockIdx = -1; lockedMacro = -1;
   currentNearby = null;
   mmDiv.hidden = true;
+  if (push) navTo("#");
   chips.forEach(chip => chip.classList.remove("active"));
   if (hoverIdx >= 0) showPoem(hoverIdx, false);
   else panel.innerHTML = '<div class="placeholder">移动鼠标查看诗作<br>点击点位锁定，或点击上方主题高亮一类<br>再次点击取消</div>';
   draw();
 }
+window.addEventListener("popstate", syncFromURL);
+window.addEventListener("hashchange", syncFromURL);
 
 // ---- 交互 ----
 function nearest(mx, my) {
@@ -559,6 +576,7 @@ fetch("/api/points").then(r => r.json()).then(data => {
   POEMS.forEach((p, idx) => {
     MACRO_MEMBERS[p.m].push(idx);
     (FINE_MEMBERS[p.f] = FINE_MEMBERS[p.f] || []).push(idx);
+    ID2IDX[p.i] = idx;
   });
   for (let m = 0; m < N_MACRO; m++) {
     const fines = [...new Set(POEMS.filter(p => p.m === m).map(p => p.f))].sort((a, b) => a - b);
@@ -580,6 +598,7 @@ fetch("/api/points").then(r => r.json()).then(data => {
     chips[m.id] = chip;  // chips 按下标=主题 id 访问，与显示顺序无关
   }
   resize();
+  syncFromURL();  // 支持刷新/分享链接直达某首诗
 });
 </script>
 </body>

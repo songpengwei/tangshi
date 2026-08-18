@@ -105,8 +105,8 @@ function fetchDetail(id) {
     js = replace_once(js,
         "  POEMS = data.points.map(([i, t, a, tx, ty, m, f]) => ({ i, t, a, tx, ty, m, f }));",
         "  POEMS = data.points.map((r, i) => ({ i, t: r[0], a: r[1], tx: r[6], ty: r[7], m: r[8], f: r[9] }));")
-    js = replace_once(js, "  resize();\n});",
-        "  resize();\n})(window.TANGSHI_DATA);")
+    js = replace_once(js, "  resize();\n  syncFromURL();  // 支持刷新/分享链接直达某首诗\n});",
+        "  resize();\n  syncFromURL();  // 支持刷新/分享链接直达某首诗\n})(window.TANGSHI_DATA);")
     # 3) 副标题
     js = replace_once(js, " · PCA→t-SNE · SQLite`;", " · PCA→t-SNE · 离线版`;")
     # 4) 触屏放大命中半径
