@@ -380,6 +380,43 @@ function fineNameOf(p) {
   return f ? f.name : "";
 }
 
+// ---- 局部密度：网格法数半径 R 内邻居数，归一化到 [0,1] ----
+// 密集处的点画小一点、淡一点，稀疏处大一点、实一点，簇就有了立体感
+let DENS = [];
+function computeDensity() {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of POEMS) {
+    if (p.tx < minX) minX = p.tx; if (p.tx > maxX) maxX = p.tx;
+    if (p.ty < minY) minY = p.ty; if (p.ty > maxY) maxY = p.ty;
+  }
+  const R = Math.max(maxX - minX, maxY - minY) / 120;
+  const R2 = R * R;
+  const grid = new Map();
+  POEMS.forEach((p, i) => {
+    const k = Math.floor(p.tx / R) + "," + Math.floor(p.ty / R);
+    const cell = grid.get(k);
+    if (cell) cell.push(i); else grid.set(k, [i]);
+  });
+  const counts = new Array(POEMS.length);
+  POEMS.forEach((p, i) => {
+    const cx = Math.floor(p.tx / R), cy = Math.floor(p.ty / R);
+    let n = 0;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const cellPts = grid.get((cx + dx) + "," + (cy + dy));
+      if (!cellPts) continue;
+      for (const j of cellPts) {
+        if (j === i) continue;
+        const ddx = POEMS[j].tx - p.tx, ddy = POEMS[j].ty - p.ty;
+        if (ddx * ddx + ddy * ddy <= R2) n++;
+      }
+    }
+    counts[i] = n;
+  });
+  const sorted = [...counts].sort((a, b) => a - b);
+  const cap = sorted[Math.floor(sorted.length * 0.95)] || 1;
+  DENS = counts.map(c => Math.min(1, Math.log1p(c) / Math.log1p(cap)));
+}
+
 // ---- 布局 ----
 let scale = { k: 1, x0: 0, y0: 0, w: 0, h: 0 };
 // 视图变换：在 fit 结果之上做缩放/平移（屏幕空间）
@@ -466,6 +503,29 @@ function resize() {
 }
 
 // ---- 绘制 ----
+let dashOffset = 0;      // 巡游虚线流动
+let tourTicker = null;
+function startTourTicker() {
+  if (tourTicker) return;
+  const tick = () => {
+    if (!tour) { tourTicker = null; return; }
+    dashOffset -= 0.8;
+    draw();
+    tourTicker = setTimeout(tick, 50);   // 20fps，后台标签页也能走
+  };
+  tourTicker = setTimeout(tick, 50);
+}
+
+function halo(x, y, r, color) {
+  const grad = ctx.createRadialGradient(x, y, r * 0.4, x, y, r);
+  grad.addColorStop(0, color + "59");
+  grad.addColorStop(1, color + "00");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function draw() {
   ctx.clearRect(0, 0, scale.w, scale.h);
   const locking = lockedMacro >= 0;
@@ -475,14 +535,25 @@ function draw() {
       const hot = !locking || p.m === lockedMacro;
       if ((pass === 1) !== hot) continue;
       const [x, y] = toScreen(p);
-      ctx.globalAlpha = locking && !hot ? 0.08 : 0.85;
+      const dn = DENS[i] || 0;
+      const baseR = 2.9 - dn * 1.4;    // 稀疏大、密集小
+      ctx.globalAlpha = locking && !hot ? 0.08 : 0.95 - dn * 0.4;
       ctx.fillStyle = fineColor(p);
       ctx.beginPath();
-      ctx.arc(x, y, locking && hot ? 3 : 2.2, 0, Math.PI * 2);
+      ctx.arc(x, y, locking && hot ? baseR + 0.8 : baseR, 0, Math.PI * 2);
       ctx.fill();
     }
   }
   ctx.globalAlpha = 1;
+  // 光晕先画，垫在点下面
+  if (hoverIdx >= 0) {
+    const [x, y] = toScreen(POEMS[hoverIdx]);
+    halo(x, y, 16, fineColor(POEMS[hoverIdx]));
+  }
+  if (lockIdx >= 0) {
+    const [x, y] = toScreen(POEMS[lockIdx]);
+    halo(x, y, 26, fineColor(POEMS[lockIdx]));
+  }
   for (const [idx, r] of [[hoverIdx, 5], [lockIdx, 8]]) {
     if (idx < 0) continue;
     const [x, y] = toScreen(POEMS[idx]);
@@ -505,6 +576,7 @@ function draw() {
     ctx.strokeStyle = "rgba(105, 103, 115, .4)";
     ctx.lineWidth = 1.2;
     ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = dashOffset;   // 流动效果
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.textAlign = "center";
@@ -568,6 +640,7 @@ function startTour(id) {
   const route = ROUTES.find(r => r.id === id);
   if (!route) return;
   tour = { route, pos: 0 };
+  startTourTicker();
   gotoStop();
 }
 function tourPrev() {
@@ -1303,6 +1376,7 @@ fetch("/api/points").then(r => r.json()).then(data => {
     const fines = [...new Set(POEMS.filter(p => p.m === m).map(p => p.f))].sort((a, b) => a - b);
     fines.forEach((f, r) => FINE_RANK[f] = { rank: r, count: fines.length });
   }
+  computeDensity();
 
   const legend = document.getElementById("legend");
   const sorted = [...data.macros].sort((a, b) => b.count - a.count);
