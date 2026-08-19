@@ -114,6 +114,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(hit) if hit else self._json({"error": "not found"}, 404)
             elif url.path == "/api/routes":
                 self._json(ROUTES)
+            elif url.path == "/api/entries":
+                self._json(ENTRIES)
             elif url.path == "/api/search":
                 q = qs["q"][0].strip()
                 self._json(search_poems(q) if q else [])
@@ -130,5 +132,8 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8899
 POINTS = get_points()  # 启动时加载一次，之后只读
 with open(os.path.join(BASE_DIR, "outputs", "routes.json"), encoding="utf-8") as _f:
     ROUTES = json.load(_f)
-print(f"点位 {len(POINTS['points'])} 首, 主题 {len(POINTS['macros'])} 个, 路线 {len(ROUTES)} 条")
+with open(os.path.join(BASE_DIR, "outputs", "entries.json"), encoding="utf-8") as _f:
+    ENTRIES = json.load(_f)
+print(f"点位 {len(POINTS['points'])} 首, 主题 {len(POINTS['macros'])} 个, "
+      f"路线 {len(ROUTES)} 条, 入口词 {len(ENTRIES)} 个")
 ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

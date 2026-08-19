@@ -59,6 +59,8 @@ def build_data_js():
         "points": points,
         "routes": json.load(open(
             os.path.join(BASE_DIR, "outputs", "routes.json"), encoding="utf-8")),
+        "entries": json.load(open(
+            os.path.join(BASE_DIR, "outputs", "entries.json"), encoding="utf-8")),
     }
     return ("window.TANGSHI_DATA = "
             + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
@@ -104,6 +106,9 @@ function fetchDetail(id) {
     js = replace_once(js,
         'fetch("/api/routes").then(r => r.json()).then(rs => { ROUTES = rs; buildRouteMenu(); });',
         "ROUTES = window.TANGSHI_DATA.routes; buildRouteMenu();")
+    js = replace_once(js,
+        'fetch("/api/entries").then(r => r.json()).then(es => { ENTRIES = es; refreshPlaceholder(); });',
+        "ENTRIES = window.TANGSHI_DATA.entries; refreshPlaceholder();")
     # 3) 搜索：离线版在内置数据里做子串匹配（标题 > 作者 > 正文）
     js = replace_once(js, """function searchPoems(q) {
   return fetch("/api/search?q=" + encodeURIComponent(q)).then(r => r.json());

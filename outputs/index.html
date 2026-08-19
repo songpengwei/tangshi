@@ -82,6 +82,18 @@
   }
   #panel .drawerHandle { display: none; }
   #panel .placeholder { color: #9a98a3; font-size: 13px; margin-top: 40px; text-align: center; line-height: 2; }
+  #panel .placeholder.sub2 { margin-top: 16px; font-size: 11px; }
+  #panel .entryChips {
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    margin-top: 6px; padding: 0 8px;
+  }
+  #panel .entryChips .ec {
+    font-size: 12px; padding: 3px 14px; border-radius: 999px; cursor: pointer;
+    background: var(--light); border: 1px solid transparent; color: var(--dark);
+  }
+  #panel .entryChips .ec:hover { border-color: var(--blue); color: var(--blue); }
+  #panel .entryChips .ec.alt { background: var(--dark); color: var(--light); }
+  #panel .entryChips .ec.alt:hover { opacity: .85; }
   #panel .clusterChip {
     display: inline-block; font-size: 12px; color: #fff;
     padding: 2px 10px; border-radius: 999px; margin-bottom: 12px;
@@ -281,10 +293,22 @@ let lockedMacro = -1;
 const chips = [];
 
 const DRAWER_HANDLE = '<div class="drawerHandle"><i></i></div>';
-const PLACEHOLDER = DRAWER_HANDLE
-  + '<div class="placeholder">不知道读什么时，就来这里走走<br>'
-  + '每个点是一首诗，离得越近，意趣越近<br>'
-  + '<span class="deskOnly">移动鼠标查看，</span>点击一点，读一首</div>';
+
+// 首屏占位：入口词 + 今日推荐/随机一首（ENTRIES 来自 /api/entries，embedding 预计算）
+let ENTRIES = [];
+function placeholderHtml() {
+  const chips = ENTRIES.map(e => `<span class="ec" data-w="${e.word}">${e.word}</span>`).join("");
+  return DRAWER_HANDLE
+    + '<div class="placeholder" style="margin-top:24px">今天想读一首关于什么的唐诗？</div>'
+    + `<div class="entryChips">${chips}`
+    + '<span class="ec alt" data-w="__today">今日推荐</span>'
+    + '<span class="ec alt" data-w="__random">随机一首</span></div>'
+    + '<div class="placeholder sub2">每个点是一首诗，离得越近，意趣越近<br>'
+    + '<span class="deskOnly">移动鼠标查看，</span>点击一点，读一首</div>';
+}
+function refreshPlaceholder() {
+  if (lockIdx < 0 && hoverIdx < 0) panel.innerHTML = placeholderHtml();
+}
 
 // ---- 详情按需加载（缓存 + 防抖） ----
 const detailCache = new Map();   // id -> detail
@@ -550,6 +574,7 @@ function exitTour() {
 }
 
 fetch("/api/routes").then(r => r.json()).then(rs => { ROUTES = rs; buildRouteMenu(); });
+fetch("/api/entries").then(r => r.json()).then(es => { ENTRIES = es; refreshPlaceholder(); });
 
 // ---- 搜索（诗名 / 诗人 / 诗句） ----
 function searchPoems(q) {
@@ -670,9 +695,31 @@ function renderDetail(d, locked) {
   }
 }
 
-// 面板事件委托：抽屉把手（移动端）、路线操作
+// 面板事件委托：抽屉把手（移动端）、路线操作、首屏入口词
 panel.addEventListener("click", e => {
   if (e.target.closest(".drawerHandle")) { panel.classList.toggle("open"); return; }
+  const ec = e.target.closest(".ec");
+  if (ec) {
+    const w = ec.dataset.w;
+    let idx = -1;
+    if (w === "__random") {
+      idx = Math.floor(Math.random() * POEMS.length);
+    } else if (w === "__today") {
+      // 今日推荐：按日期确定，一天不变
+      const day = new Date().toISOString().slice(0, 10);
+      let h = 0;
+      for (const ch of day) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      idx = h % POEMS.length;
+    } else {
+      const en = ENTRIES.find(x => x.word === w);
+      if (en) {
+        const id = en.poemIds[Math.floor(Math.random() * en.poemIds.length)];
+        idx = ID2IDX[id] !== undefined ? ID2IDX[id] : -1;
+      }
+    }
+    if (idx >= 0) { lock(idx); focusPoem(idx); }
+    return;
+  }
   const rope = e.target.closest("[data-rope]");
   if (!rope) return;
   const op = rope.dataset.rope;
@@ -1060,7 +1107,7 @@ function unlock(push = true) {
   chips.forEach(chip => chip.classList.remove("active"));
   panel.classList.remove("open");
   if (hoverIdx >= 0) showPoem(hoverIdx, false);
-  else panel.innerHTML = PLACEHOLDER;
+  else panel.innerHTML = placeholderHtml();
   draw();
 }
 window.addEventListener("popstate", syncFromURL);
