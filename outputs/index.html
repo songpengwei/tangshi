@@ -10,6 +10,7 @@
     --red: #F19A97; --dark: #696773; --light: #EFF1F3;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }  /* 防止自定义 display 覆盖 hidden */
   body {
     font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     background: var(--light); color: var(--dark);
