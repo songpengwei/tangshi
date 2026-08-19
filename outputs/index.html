@@ -135,6 +135,19 @@
     margin-top: 12px; font-size: 12px; color: var(--red);
     border-top: 1px dashed #e2e4e7; padding-top: 10px;
   }
+  #panel .tagline { font-size: 11px; color: #9a98a3; margin: -8px 0 12px; }
+  #panel .shareBtn.fav { background: var(--light); color: var(--dark); margin-left: 8px; }
+  #legend .chip.fav { margin-left: auto; border: 1px solid #e2e4e7; }
+  #panel .favList > b { font-size: 14px; display: block; margin-bottom: 8px; }
+  #panel .favList .nb {
+    font-size: 13px; line-height: 2.1; cursor: pointer; border-radius: 6px;
+    padding: 1px 6px; display: flex; justify-content: space-between; gap: 8px;
+  }
+  #panel .favList .nb:hover { background: var(--light); }
+  #panel .favList .nb .ba { color: var(--blue); flex-shrink: 0; }
+  #panel .favList .nb .fx { color: #c0bec9; flex-shrink: 0; padding: 0 4px; }
+  #panel .favList .nb .fx:hover { color: var(--red); }
+  #panel .favEmpty { font-size: 12px; color: #9a98a3; line-height: 2; margin-top: 10px; }
   #panel .loading { font-size: 12px; color: #9a98a3; margin-top: 16px; }
 
   /* 漫游路线条 */
@@ -667,6 +680,17 @@ function bindFineChips() {
   });
 }
 
+function taglineHtml(d) {
+  // 一句话诗签：这首诗在语义地图上的位置说明
+  const n = (FINE_MEMBERS[d.fine] || []).length - 1;
+  let s = n > 0 ? `与另外 ${n} 首诗聚在「${d.fine_name}」一带` : "";
+  if (currentNearby && currentNearby.nearest5.length) {
+    const p = POEMS[currentNearby.nearest5[0]];
+    s += `${s ? " · " : ""}最接近的是《${p.t}》`;
+  }
+  return s ? `<div class="tagline">${s}</div>` : "";
+}
+
 function renderDetail(d, locked) {
   panel.innerHTML = DRAWER_HANDLE + routeBarHtml() + `
     <span class="clusterChip" style="background:${MACRO_COLORS[d.macro]}">${dispName(d.macro_name)}</span>
@@ -674,16 +698,22 @@ function renderDetail(d, locked) {
     <h2>《${d.title}》</h2>
     <div class="author">${d.author}${d.era ? " · " + d.era : ""}</div>
     <div class="facts">${[d.form, d.fine_name, ...d.tags.map(t => `<span class="tag">${t}</span>`)].filter(Boolean).join(" ")}</div>
+    ${taglineHtml(d)}
     <div class="content">${poemRows(d.paragraphs)}</div>
     ${bioHtml(d.bio)}
     ${locked && currentNearby ? nearbyHtml(currentNearby) : ""}
-    ${locked ? '<div><span class="shareBtn" id="shareBtn">生成分享诗卡</span></div>' : ''}
+    ${locked ? `<div><span class="shareBtn" id="shareBtn">生成分享诗卡</span><span class="shareBtn fav" id="favBtnPoem">${isFav(d.id) ? "★ 已收藏" : "☆ 收藏"}</span></div>` : ""}
     ${locked ? '<div class="locked">已锁定：同主题高亮中，再次点击取消</div>' : ''}
   `;
   bindFineChips();
   bindNearby();
   const shareBtn = document.getElementById("shareBtn");
   if (shareBtn) shareBtn.onclick = () => openShare(d);
+  const favBtnPoem = document.getElementById("favBtnPoem");
+  if (favBtnPoem) favBtnPoem.onclick = () => {
+    toggleFav(d.id);
+    favBtnPoem.textContent = isFav(d.id) ? "★ 已收藏" : "☆ 收藏";
+  };
   const toggle = document.getElementById("bioToggle");
   if (toggle) {
     let expanded = false;
@@ -721,11 +751,17 @@ panel.addEventListener("click", e => {
     return;
   }
   const rope = e.target.closest("[data-rope]");
-  if (!rope) return;
-  const op = rope.dataset.rope;
-  if (op === "prev") tourPrev();
-  else if (op === "next") tourNext();
-  else if (op === "exit") exitTour();
+  if (rope) {
+    const op = rope.dataset.rope;
+    if (op === "prev") tourPrev();
+    else if (op === "next") tourNext();
+    else if (op === "exit") exitTour();
+    return;
+  }
+  const fx = e.target.closest(".fx");   // 诗集里移除一首
+  if (fx) { toggleFav(Number(fx.dataset.del)); showFavs(); return; }
+  const fiv = e.target.closest(".favList .nb");   // 诗集里跳转一首
+  if (fiv) { lock(Number(fiv.dataset.i)); focusPoem(Number(fiv.dataset.i)); return; }
 });
 
 // ---- 附近的诗（基于 t-SNE 坐标距离，纯前端计算） ----
@@ -779,6 +815,38 @@ function bindNearby() {
   panel.querySelectorAll(".nearby .nb").forEach(el => {
     el.onclick = () => lock(Number(el.dataset.i));
   });
+}
+
+// ---- 收藏（localStorage 本地诗集） ----
+const FAV_KEY = "tangshi_favs";
+let favs = [];
+try { favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch (e) { favs = []; }
+let favBtnEl = null;   // 图例栏右侧的「诗集 N」入口
+function saveFavs() {
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch (e) { /* 容器内不可写则仅本次会话有效 */ }
+  syncFavBtn();
+}
+function syncFavBtn() { if (favBtnEl) favBtnEl.textContent = `诗集 ${favs.length}`; }
+function isFav(id) { return favs.includes(id); }
+function toggleFav(id) {
+  const i = favs.indexOf(id);
+  if (i >= 0) favs.splice(i, 1); else favs.push(id);
+  saveFavs();
+}
+function showFavs() {
+  if (!favs.length) {
+    panel.innerHTML = DRAWER_HANDLE
+      + '<div class="favList"><b>我的诗集（0）</b>'
+      + '<div class="favEmpty">还没有收藏<br>锁定一首诗后点「☆ 收藏」，它会出现在这里</div></div>';
+    return;
+  }
+  const items = favs.map(id => {
+    const i = ID2IDX[id];
+    if (i === undefined) return "";
+    const p = POEMS[i];
+    return `<div class="nb" data-i="${i}"><span class="bt">《${p.t}》</span><span class="ba">${p.a}</span><span class="fx" data-del="${id}" title="移除">×</span></div>`;
+  }).join("");
+  panel.innerHTML = DRAWER_HANDLE + `<div class="favList"><b>我的诗集（${favs.length}）</b>${items}</div>`;
 }
 
 // ---- 左下角缩略星图 ----
@@ -1250,6 +1318,11 @@ fetch("/api/points").then(r => r.json()).then(data => {
     legend.appendChild(chip);
     chips[m.id] = chip;  // chips 按下标=主题 id 访问，与显示顺序无关
   }
+  favBtnEl = document.createElement("span");   // 我的诗集入口
+  favBtnEl.className = "chip fav";
+  favBtnEl.onclick = showFavs;
+  legend.appendChild(favBtnEl);
+  syncFavBtn();
   resize();
   syncFromURL();  // 支持刷新/分享链接直达某首诗
 });
