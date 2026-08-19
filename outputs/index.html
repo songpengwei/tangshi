@@ -29,6 +29,26 @@
     font-size: 12px; padding: 3px 10px; flex-shrink: 0;
   }
   #routeSel option { color: var(--dark); }
+  #searchWrap { position: relative; flex-shrink: 0; }
+  #searchBox {
+    width: 150px; font-size: 12px; padding: 4px 12px;
+    border-radius: 999px; border: 1px solid rgba(239, 241, 243, .35);
+    background: rgba(239, 241, 243, .12); color: var(--light); outline: none;
+  }
+  #searchBox::placeholder { color: rgba(239, 241, 243, .5); }
+  #searchDrop {
+    position: absolute; top: calc(100% + 8px); right: 0; width: 240px;
+    background: #fff; border-radius: 10px; z-index: 30; padding: 4px 0;
+    box-shadow: 0 4px 18px rgba(105, 103, 115, .2);
+    max-height: 50vh; overflow-y: auto;
+  }
+  #searchDrop .sr {
+    padding: 6px 14px; cursor: pointer; font-size: 13px;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  #searchDrop .sr:hover { background: var(--light); }
+  #searchDrop .sr .sa { color: var(--blue); font-size: 12px; flex-shrink: 0; }
+  #searchDrop .sr.none { color: #9a98a3; cursor: default; font-size: 12px; }
   #legend {
     display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 8px 20px;
     background: #fff; border-bottom: 1px solid #e2e4e7; flex-shrink: 0;
@@ -180,6 +200,8 @@
       font-size: 10px; white-space: nowrap;
     }
     #routeSel { font-size: 11px; padding: 2px 6px; max-width: 96px; }
+    #searchBox { width: 92px; font-size: 11px; padding: 3px 8px; }
+    #searchDrop { width: 200px; }
     #legend { max-height: 84px; overflow-y: auto; padding: 6px 10px; gap: 3px 5px; }
     #legend .chip { font-size: 10px; padding: 2px 6px; }
     main { display: block; }
@@ -217,6 +239,7 @@
 <header>
   <h1>唐诗地图</h1>
   <span class="sub" id="sub">加载中…</span>
+  <span id="searchWrap"><input id="searchBox" placeholder="搜诗名 / 诗人 / 诗句" autocomplete="off"><div id="searchDrop" hidden></div></span>
   <select id="routeSel"><option value="">漫游路线…</option></select>
 </header>
 <div id="legend"></div>
@@ -527,6 +550,45 @@ function exitTour() {
 }
 
 fetch("/api/routes").then(r => r.json()).then(rs => { ROUTES = rs; buildRouteMenu(); });
+
+// ---- 搜索（诗名 / 诗人 / 诗句） ----
+function searchPoems(q) {
+  return fetch("/api/search?q=" + encodeURIComponent(q)).then(r => r.json());
+}
+const searchBox = document.getElementById("searchBox");
+const searchDrop = document.getElementById("searchDrop");
+let searchTimer = null;
+searchBox.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const q = searchBox.value.trim();
+  if (!q) { searchDrop.hidden = true; return; }
+  searchTimer = setTimeout(() => {
+    searchPoems(q).then(list => {
+      if (searchBox.value.trim() !== q) return;  // 过期响应丢弃
+      searchDrop.innerHTML = list.length
+        ? list.map(p => `<div class="sr" data-id="${p.id}"><span>《${p.title}》</span><span class="sa">${p.author}</span></div>`).join("")
+        : '<div class="sr none">没有找到，换个词试试</div>';
+      searchDrop.hidden = false;
+    });
+  }, 200);
+});
+searchBox.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const first = searchDrop.querySelector(".sr[data-id]");
+    if (first) first.click();
+  }
+});
+searchDrop.addEventListener("click", e => {
+  const el = e.target.closest(".sr[data-id]");
+  if (!el) return;
+  searchDrop.hidden = true;
+  searchBox.value = "";
+  const idx = ID2IDX[Number(el.dataset.id)];
+  if (idx !== undefined) { lock(idx); focusPoem(idx); }
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest("#searchWrap")) searchDrop.hidden = true;
+});
 
 // ---- 右侧面板 ----
 const BIO_LIMIT = 140;

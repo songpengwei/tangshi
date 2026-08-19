@@ -9,6 +9,7 @@
     GET /api/poem?id=N -> 单首诗完整信息（正文/小传/标签等）
     GET /api/random?m=N -> 主题 N 内随机一首诗 id
     GET /api/routes    -> 漫游路线（outputs/routes.json）
+    GET /api/search?q= -> 按诗名/诗人/诗句搜索（LIKE，最多 20 条）
 """
 import json
 import os
@@ -69,6 +70,20 @@ def random_poem(macro: int):
     return {"id": r["id"]} if r else None
 
 
+def search_poems(q: str):
+    like = f"%{q}%"
+    rows = _db.execute(
+        "SELECT id, title, author FROM poems "
+        "WHERE title LIKE ? OR author LIKE ? OR paragraphs LIKE ? "
+        "ORDER BY CASE "
+        "  WHEN title LIKE ? THEN 0 "
+        "  WHEN author LIKE ? THEN 1 "
+        "  ELSE 2 END, id "
+        "LIMIT 20", (like, like, like, like, like)).fetchall()
+    return [{"id": r["id"], "title": r["title"], "author": r["author"]}
+            for r in rows]
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, body: bytes, ctype: str, code: int = 200):
         self.send_response(code)
@@ -99,6 +114,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(hit) if hit else self._json({"error": "not found"}, 404)
             elif url.path == "/api/routes":
                 self._json(ROUTES)
+            elif url.path == "/api/search":
+                q = qs["q"][0].strip()
+                self._json(search_poems(q) if q else [])
             else:
                 self._json({"error": "not found"}, 404)
         except (KeyError, ValueError, IndexError):

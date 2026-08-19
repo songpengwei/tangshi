@@ -104,6 +104,22 @@ function fetchDetail(id) {
     js = replace_once(js,
         'fetch("/api/routes").then(r => r.json()).then(rs => { ROUTES = rs; buildRouteMenu(); });',
         "ROUTES = window.TANGSHI_DATA.routes; buildRouteMenu();")
+    # 3) 搜索：离线版在内置数据里做子串匹配（标题 > 作者 > 正文）
+    js = replace_once(js, """function searchPoems(q) {
+  return fetch("/api/search?q=" + encodeURIComponent(q)).then(r => r.json());
+}""", """function searchPoems(q) {
+  const P = window.TANGSHI_DATA.points;
+  const hit = (r, i) => ({ id: i, title: r[0], author: r[1] });
+  const a = [], b = [], c = [];
+  for (let i = 0; i < P.length; i++) {
+    const r = P[i];
+    if (r[0].includes(q)) a.push(hit(r, i));
+    else if (r[1].includes(q)) b.push(hit(r, i));
+    else if (r[5].join("").includes(q)) c.push(hit(r, i));
+    if (a.length >= 20) break;
+  }
+  return Promise.resolve(a.concat(b, c).slice(0, 20));
+}""")
     js = replace_once(js,
         'fetch("/api/points").then(r => r.json()).then(data => {',
         "(function init(data) {")
@@ -112,9 +128,9 @@ function fetchDetail(id) {
         "  POEMS = data.points.map((r, i) => ({ i, t: r[0], a: r[1], tx: r[6], ty: r[7], m: r[8], f: r[9] }));")
     js = replace_once(js, "  resize();\n  syncFromURL();  // 支持刷新/分享链接直达某首诗\n});",
         "  resize();\n  syncFromURL();  // 支持刷新/分享链接直达某首诗\n})(window.TANGSHI_DATA);")
-    # 3) 副标题
+    # 4) 副标题
     js = replace_once(js, " · PCA→t-SNE · SQLite`;", " · PCA→t-SNE · 离线版`;")
-    # 4) 触屏放大命中半径
+    # 5) 触屏放大命中半径
     js = replace_once(js, "  let best = -1, bestD = 64;",
         "  let best = -1, bestD = (window.matchMedia && matchMedia(\"(pointer: coarse)\").matches) ? 400 : 64; // 触屏放大命中半径")
     return js
