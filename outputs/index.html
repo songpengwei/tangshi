@@ -23,6 +23,8 @@
   }
   header h1 { font-size: 17px; font-weight: 600; letter-spacing: 1px; }
   header .sub { font-size: 12px; opacity: .65; flex: 1; }
+  header .byline { font-size: 12px; opacity: .85; flex-shrink: 0; }
+  header .byline a { color: var(--light); text-decoration: none; border-bottom: 1px dashed rgba(239, 241, 243, .5); }
   #routeSel {
     background: transparent; color: var(--light); cursor: pointer;
     border: 1px solid rgba(239, 241, 243, .35); border-radius: 999px;
@@ -256,6 +258,7 @@
     #minimap { position: fixed; left: 10px; bottom: 66px; z-index: 15; }
     #panel.open ~ #minimap { visibility: hidden; }
     .deskOnly { display: none; }
+    .byline { display: none; }
     .mobOnly { display: inline; }
   }
 </style>
@@ -264,6 +267,7 @@
 <header>
   <h1>唐诗星河</h1>
   <span class="sub" id="sub">加载中…</span>
+  <span class="byline">by <a href="https://www.qtmuniao.com/" target="_blank" rel="noopener">木鸟杂记</a></span>
   <span id="searchWrap"><input id="searchBox" placeholder="搜诗名 / 诗人 / 诗句" autocomplete="off"><div id="searchDrop" hidden></div></span>
   <select id="routeSel"><option value="">漫游路线…</option></select>
 </header>
@@ -1240,7 +1244,7 @@ function makeShareCard(d, url) {
   g.beginPath(); g.moveTo(110, 1092); g.lineTo(W - 110, 1092); g.stroke();
   g.font = "bold 22px 'PingFang SC', sans-serif";
   g.fillStyle = "#696773";
-  g.fillText("来自 · 唐诗星河", W / 2, 1124);
+  g.fillText("来自 · 唐诗星河 · 木鸟杂记", W / 2, 1124);
   g.font = "17px 'PingFang SC', sans-serif";
   g.fillStyle = "#9a98a3";
   g.fillText(fitText(g, url, W - 200), W / 2, 1152);

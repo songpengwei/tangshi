@@ -159,6 +159,10 @@ def build_html(html):
     html = replace_once(html,
         "    padding: 20px; overflow-y: auto;",
         "    padding: 20px 20px calc(20px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); overflow-y: auto;")
+    # 作者署名：容器禁外链，剥离为纯文本
+    html = replace_once(html,
+        '<span class="byline">by <a href="https://www.qtmuniao.com/" target="_blank" rel="noopener">木鸟杂记</a></span>',
+        '<span class="byline">by 木鸟杂记</span>')
     # 拆出内联脚本 -> 外置经典脚本（CSP 禁内联）
     head, rest = html.split("<script>", 1)
     js, tail = rest.split("</script>", 1)
