@@ -770,41 +770,54 @@ function makeShareCard(d, url) {
   card.width = W; card.height = H;
   const g = card.getContext("2d");
   const accent = MACRO_COLORS[d.macro];
+  const [ah, as] = hexToHsl(accent);
+  const bgTint = hslToHex(ah, Math.min(as * 0.7, 0.55), 0.92);   // 主题色的浅色底
+  const inkTint = hslToHex(ah, Math.min(as * 0.8, 0.6), 0.4);    // 主题色的深色文字
 
-  g.fillStyle = "#EFF1F3"; g.fillRect(0, 0, W, H);
+  g.fillStyle = bgTint; g.fillRect(0, 0, W, H);
   g.fillStyle = "#fff";
   if (g.roundRect) { g.beginPath(); g.roundRect(36, 36, W - 72, H - 72, 24); g.fill(); }
   else g.fillRect(36, 36, W - 72, H - 72);
 
   g.textAlign = "center";
-  // 头部：主题 · 细类
+  // 头部色带：主题 · 细类
   const headText = `${dispName(d.macro_name)} · ${d.fine_name}`;
   g.font = "22px 'PingFang SC', sans-serif";
   const hw = g.measureText(headText).width;
   g.fillStyle = accent;
-  g.beginPath(); g.arc(W / 2 - hw / 2 - 18, 96, 8, 0, Math.PI * 2); g.fill();
-  g.fillStyle = "#9a98a3";
-  g.fillText(headText, W / 2 + 10, 104);
+  if (g.roundRect) { g.beginPath(); g.roundRect(W / 2 - hw / 2 - 30, 60, hw + 60, 54, 27); g.fill(); }
+  else g.fillRect(W / 2 - hw / 2 - 30, 60, hw + 60, 54);
+  g.fillStyle = "#fff";
+  g.fillText(headText, W / 2, 96);
 
   // 诗名 / 作者
-  g.fillStyle = "#696773";
+  g.fillStyle = inkTint;
   g.font = "bold 42px 'PingFang SC', serif";
-  g.fillText(fitText(g, `《${d.title}》`, W - 160), W / 2, 180);
+  g.fillText(fitText(g, `《${d.title}》`, W - 160), W / 2, 186);
   g.font = "26px 'PingFang SC', sans-serif";
   g.fillStyle = "#77AAC2";
-  g.fillText(`${d.author}${d.era ? " · " + d.era : ""}`, W / 2, 228);
+  g.fillText(`${d.author}${d.era ? " · " + d.era : ""}`, W / 2, 234);
+  // 黄色小横杠点缀
+  g.fillStyle = "#FCD765";
+  if (g.roundRect) { g.beginPath(); g.roundRect(W / 2 - 30, 254, 60, 5, 2.5); g.fill(); }
+  else g.fillRect(W / 2 - 30, 254, 60, 5);
 
   // 正文一联（前两句）
   const clauses = d.paragraphs.join("").split(/(?<=[，。！？；])/).filter(s => s.trim()).slice(0, 2);
   g.font = "32px 'PingFang SC', serif";
   g.fillStyle = "#57526B";
-  clauses.forEach((c, i) => g.fillText(c, W / 2, 300 + i * 52));
+  clauses.forEach((c, i) => g.fillText(c, W / 2, 308 + i * 52));
 
   // 语义地图缩略：以当前诗为中心的局部视野，最近 5 首高亮（连线 + 标注，同"附近的诗"星图配色）
   const bx = 110, by = 410, bw = 680, bh = 620;
   g.fillStyle = "#F7F8F9";
   if (g.roundRect) { g.beginPath(); g.roundRect(bx, by, bw, bh, 16); g.fill(); }
   else g.fillRect(bx, by, bw, bh);
+  g.globalAlpha = 0.45;   // 主题色描边
+  g.strokeStyle = accent; g.lineWidth = 2;
+  if (g.roundRect) { g.beginPath(); g.roundRect(bx, by, bw, bh, 16); g.stroke(); }
+  else g.strokeRect(bx, by, bw, bh);
+  g.globalAlpha = 1;
   const center = POEMS[ID2IDX[d.id]];
   const nb5 = currentNearby ? currentNearby.nearest5 : [];
   const maxd = nb5.length
@@ -875,6 +888,11 @@ function makeShareCard(d, url) {
 
   // 页脚：来源 + 链接
   g.textAlign = "center";
+  const trio = ["#77AAC2", "#FCD765", "#F19A97"];  // 木鸟三色点缀
+  trio.forEach((c, i) => {
+    g.fillStyle = c;
+    g.beginPath(); g.arc(W / 2 - 26 + i * 26, 1066, 5, 0, Math.PI * 2); g.fill();
+  });
   g.strokeStyle = "#e2e4e7"; g.lineWidth = 1;
   g.beginPath(); g.moveTo(110, 1092); g.lineTo(W - 110, 1092); g.stroke();
   g.font = "bold 22px 'PingFang SC', sans-serif";
