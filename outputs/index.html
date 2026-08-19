@@ -160,6 +160,13 @@
   }
   #minimap .mmTitle { font-size: 11px; color: #9a98a3; margin-bottom: 4px; text-align: center; }
   #minimap canvas { display: block; cursor: pointer; }
+  #mmTip {
+    position: fixed; z-index: 40; pointer-events: none;
+    background: #fff; border: 1px solid #e2e4e7; border-radius: 6px;
+    padding: 2px 8px; font-size: 11px; color: var(--dark);
+    box-shadow: 0 2px 8px rgba(105, 103, 115, .15); white-space: nowrap;
+  }
+  #mmTip .ta { color: var(--blue); margin-left: 4px; }
 
   @media (max-width: 700px) {
     body { height: 100dvh; overflow: hidden; }
@@ -217,6 +224,7 @@
   <div id="canvasWrap"><canvas id="cv"></canvas><button id="resetView" hidden>回到全图</button><div id="axisNote">点位距离 = 语义相似度 · 坐标轴无独立含义<span class="deskOnly"> · 滚轮缩放 / 拖拽平移 / 双击放大</span><span class="mobOnly"> · 单指拖动 / 双指缩放</span></div></div>
   <div id="panel"><div class="drawerHandle"><i></i></div><div class="placeholder">不知道读什么时，就来这里走走<br>每个点是一首诗，离得越近，意趣越近<br><span class="deskOnly">移动鼠标查看，</span>点击一点，读一首</div></div>
   <div id="minimap" hidden><div class="mmTitle">附近的诗 · 最近 10 首</div><canvas id="mmcv"></canvas></div>
+  <div id="mmTip" hidden></div>
 </main>
 <div id="shareModal" hidden></div>
 <script>
@@ -673,7 +681,7 @@ let mmPts = [];              // 星图上各点 {x, y, idx}，供点击命中
 
 function drawMinimap() {
   const nb = currentNearby;
-  if (!nb) { mmDiv.hidden = true; return; }
+  if (!nb) { mmDiv.hidden = true; mmTip.hidden = true; return; }
   mmDiv.hidden = false;
   const dpr = window.devicePixelRatio || 1;
   mmcv.width = MM * dpr; mmcv.height = MM * dpr;
@@ -726,6 +734,25 @@ mmcv.addEventListener("click", e => {
   }
   if (best >= 0) lock(best);
 });
+
+// 星图 hover：悬浮诗名
+const mmTip = document.getElementById("mmTip");
+mmcv.addEventListener("pointermove", e => {
+  const rect = mmcv.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let best = null, bestD = 100;  // 10px 内命中
+  for (const p of mmPts) {
+    const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  if (!best) { mmTip.hidden = true; return; }
+  const poem = POEMS[best.idx];
+  mmTip.innerHTML = `《${poem.t}》<span class="ta">${poem.a}</span>`;
+  mmTip.style.left = (e.clientX + 12) + "px";
+  mmTip.style.top = (e.clientY + 12) + "px";
+  mmTip.hidden = false;
+});
+mmcv.addEventListener("pointerleave", () => { mmTip.hidden = true; });
 
 // ---- 分享诗卡（Canvas 离屏绘制，900x1200 适配小红书/朋友圈） ----
 const shareModal = document.getElementById("shareModal");
@@ -935,6 +962,7 @@ function unlock(push = true) {
   lockIdx = -1; lockedMacro = -1;
   currentNearby = null;
   mmDiv.hidden = true;
+  mmTip.hidden = true;
   if (push) navTo("#");
   chips.forEach(chip => chip.classList.remove("active"));
   panel.classList.remove("open");
