@@ -756,7 +756,6 @@ mmcv.addEventListener("pointerleave", () => { mmTip.hidden = true; });
 
 // ---- 分享诗卡（Canvas 离屏绘制，900x1200 适配小红书/朋友圈） ----
 const shareModal = document.getElementById("shareModal");
-let DATA_BOUNDS = null;  // 全体点位坐标范围（诗卡小地图用）
 
 function fitText(g, text, maxW) {
   if (g.measureText(text).width <= maxW) return text;
@@ -801,64 +800,78 @@ function makeShareCard(d, url) {
   g.fillStyle = "#57526B";
   clauses.forEach((c, i) => g.fillText(c, W / 2, 300 + i * 52));
 
-  // 语义地图缩略：全体压暗 + 邻近 10 首 + 当前高亮
-  const bx = 110, by = 410, bw = 680, bh = 400;
+  // 语义地图缩略：以当前诗为中心的局部视野，最近 5 首高亮（连线 + 标注，同"附近的诗"星图配色）
+  const bx = 110, by = 410, bw = 680, bh = 620;
   g.fillStyle = "#F7F8F9";
   if (g.roundRect) { g.beginPath(); g.roundRect(bx, by, bw, bh, 16); g.fill(); }
   else g.fillRect(bx, by, bw, bh);
-  if (!DATA_BOUNDS) {
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const p of POEMS) {
-      if (p.tx < x0) x0 = p.tx; if (p.tx > x1) x1 = p.tx;
-      if (p.ty < y0) y0 = p.ty; if (p.ty > y1) y1 = p.ty;
-    }
-    DATA_BOUNDS = { x0, x1, y0, y1 };
-  }
-  const B = DATA_BOUNDS, pad = 16;
-  const k = Math.min((bw - 2 * pad) / (B.x1 - B.x0), (bh - 2 * pad) / (B.y1 - B.y0));
-  const ox = bx + pad - B.x0 * k + ((bw - 2 * pad) - (B.x1 - B.x0) * k) / 2;
-  const oy = by + pad + B.y1 * k + ((bh - 2 * pad) - (B.y1 - B.y0) * k) / 2;
-  const pt = p => [ox + p.tx * k, oy - p.ty * k];
-  g.fillStyle = "rgba(105,103,115,.16)";
+  const center = POEMS[ID2IDX[d.id]];
+  const nb5 = currentNearby ? currentNearby.nearest5 : [];
+  const maxd = nb5.length
+    ? Math.max(...nb5.map(j => Math.hypot(POEMS[j].tx - center.tx, POEMS[j].ty - center.ty)), 1e-9)
+    : 1;
+  const ccx = bx + bw / 2, ccy = by + bh / 2 - 10;
+  const kk = (Math.min(bw, bh) / 2 - 70) / (maxd * 1.45);  // 最远点之外再留 45% 余量
+  const pt = p => [ccx + (p.tx - center.tx) * kk, ccy - (p.ty - center.ty) * kk];
+  // 局部背景点
+  g.fillStyle = "rgba(105,103,115,.18)";
   for (const p of POEMS) {
     const [x, y] = pt(p);
-    g.fillRect(x, y, 1.6, 1.6);
+    if (x < bx + 4 || x > bx + bw - 4 || y < by + 4 || y > by + bh - 4) continue;
+    g.fillRect(x, y, 2, 2);
   }
-  const center = POEMS[ID2IDX[d.id]];
-  const [ccx, ccy] = pt(center);
-  if (currentNearby) {
-    for (const j of currentNearby.nearest10) {
-      const [x, y] = pt(POEMS[j]);
-      g.strokeStyle = fineColor(POEMS[j]);
-      g.globalAlpha = 0.55; g.lineWidth = 1.2;
-      g.beginPath(); g.moveTo(ccx, ccy); g.lineTo(x, y); g.stroke();
-      g.globalAlpha = 1;
-      g.fillStyle = fineColor(POEMS[j]);
-      g.beginPath(); g.arc(x, y, 4.5, 0, Math.PI * 2); g.fill();
+  // 边：中心到各邻近点，长度即距离（近短远长）
+  for (const j of nb5) {
+    const [x, y] = pt(POEMS[j]);
+    g.strokeStyle = fineColor(POEMS[j]);
+    g.globalAlpha = 0.55; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(ccx, ccy); g.lineTo(x, y); g.stroke();
+    g.globalAlpha = 1;
+  }
+  // 邻近点：星图同款配色 + 白描边
+  for (const j of nb5) {
+    const [x, y] = pt(POEMS[j]);
+    g.fillStyle = fineColor(POEMS[j]);
+    g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 2; g.strokeStyle = "#fff";
+    g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.stroke();
+  }
+  // 诗名标注：优先右侧，超框换左侧；纵向重叠时下移避让
+  g.font = "17px 'PingFang SC', sans-serif";
+  g.textBaseline = "middle";
+  const placed = [];
+  for (const j of nb5) {
+    let [x, y] = pt(POEMS[j]);
+    const label = `《${POEMS[j].t}》${POEMS[j].a}`;
+    const lw = g.measureText(label).width;
+    const rightSide = x + 14 + lw <= bx + bw - 8;
+    for (let tries = 0; tries < 6; tries++) {
+      const x0 = rightSide ? x + 10 : x - 14 - lw;
+      const box = { x0, y0: y - 13, x1: x0 + lw + 8, y1: y + 13 };
+      const hit = placed.find(q => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0);
+      if (!hit) { placed.push(box); break; }
+      y = hit.y1 + 14;
+      if (y > by + bh - 24) break;
     }
+    const tx = rightSide ? x + 14 : x - 14;
+    g.textAlign = rightSide ? "left" : "right";
+    const bgX = rightSide ? tx - 4 : tx - lw - 4;
+    g.fillStyle = "rgba(255, 255, 255, .88)";   // 半透明白底，压在灰点上也读得清
+    if (g.roundRect) { g.beginPath(); g.roundRect(bgX, y - 13, lw + 8, 26, 6); g.fill(); }
+    else g.fillRect(bgX, y - 13, lw + 8, 26);
+    g.fillStyle = "#57526B";
+    g.fillText(label, tx, y);
   }
+  // 中心点最后画，压在最上层
   g.fillStyle = accent;
   g.beginPath(); g.arc(ccx, ccy, 9, 0, Math.PI * 2); g.fill();
   g.lineWidth = 4; g.strokeStyle = "#fff";
   g.beginPath(); g.arc(ccx, ccy, 9, 0, Math.PI * 2); g.stroke();
+  g.textBaseline = "alphabetic";
+  g.textAlign = "center";
   g.font = "18px 'PingFang SC', sans-serif";
   g.fillStyle = "#9a98a3";
-  g.fillText("在语义地图中的位置", W / 2, by + bh - 12);
-
-  // 相似的诗
-  g.textAlign = "left";
-  g.font = "bold 24px 'PingFang SC', sans-serif";
-  g.fillStyle = "#696773";
-  g.fillText("相似的诗", 110, 868);
-  g.font = "23px 'PingFang SC', sans-serif";
-  let sy = 908;
-  for (const j of (currentNearby ? currentNearby.nearest5 : [])) {
-    g.fillStyle = fineColor(POEMS[j]);
-    g.beginPath(); g.arc(122, sy - 7, 5, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "#57526B";
-    g.fillText(fitText(g, `《${POEMS[j].t}》 ${POEMS[j].a}`, W - 240), 140, sy);
-    sy += 37;
-  }
+  g.fillText("在语义地图上的位置 · 连线为语义最近的 5 首", W / 2, by + bh - 12);
 
   // 页脚：来源 + 链接
   g.textAlign = "center";
